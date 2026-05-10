@@ -1,0 +1,5 @@
+release/
+node_modules/
+out/
+.codex-dev.log
+.codex-dev.err

@@ -1,0 +1,13 @@
+{
+  "name": "cleanshotx-sharex-fork",
+  "version": "0.1.0",
+  "description": "Patched ShareX build with a floating screenshot overlay for Windows",
+  "author": "OpenAI Codex",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "dev": "powershell -ExecutionPolicy Bypass -File scripts/run-sharex-overlay.ps1",
+    "build": "dotnet build upstream/ShareX/ShareX/ShareX.csproj -c Release -r win-x64",
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/deploy-sharex.ps1",
+    "test": "dotnet test upstream/ShareX/ShareX.Tests/ShareX.Tests.csproj -c Release"
+  }
+}
