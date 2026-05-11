@@ -492,8 +492,10 @@ namespace ShareX
             private readonly Button btnCornerUpload;
             private readonly Timer dismissTimer;
             private readonly ContextMenuStrip contextMenu;
+            private readonly CaptureOverlayLifetime lifetime;
             private Font symbolFont;
-            private DateTime dismissAtUtc;
+            private readonly bool supportsImageActions;
+            private readonly bool supportsVideoActions;
 
             private Timer motionTimer;
             private MotionPhase motionPhase;
@@ -525,7 +527,7 @@ namespace ShareX
 
             public WorkerTask Task { get; }
             public bool IsPrimary { get; private set; }
-            public bool HeldOpen { get; private set; }
+            public bool HeldOpen => lifetime.IsHeldOpen;
 
             public event Action<CaptureOverlayCard> DismissRequested;
             public event Action<CaptureOverlayCard> EditRequested;
@@ -536,6 +538,9 @@ namespace ShareX
             public CaptureOverlayCard(WorkerTask task)
             {
                 Task = task;
+                supportsImageActions = CaptureOverlayMediaSupport.SupportsImageActions(Task?.Info?.FilePath);
+                supportsVideoActions = CaptureOverlayMediaSupport.SupportsVideoActions(Task?.Info?.FilePath);
+                lifetime = new CaptureOverlayLifetime(DateTime.UtcNow);
 
                 // Opaque dark BackColor — Region clips the rounded shape.
                 // Pixels outside Region show form's Magenta (TransparencyKey).
@@ -547,18 +552,18 @@ namespace ShareX
 
                 thumbnailPanel = new TaskThumbnailPanel(task)
                 {
-                    ClickAction = ThumbnailViewClickAction.Select,
+                    ClickAction = supportsImageActions ? ThumbnailViewClickAction.Select : ThumbnailViewClickAction.OpenFile,
                     TitleLocation = ThumbnailTitleLocation.Bottom,
                     TitleVisible = false
                 };
-                thumbnailPanel.UpdateThumbnail(task.Image);
+                thumbnailPanel.UpdateThumbnail(GetPreviewImageForThumbnail());
                 thumbnailPanel.UpdateStatus();
                 thumbnailPanel.MouseEnter += Interactive_MouseEnter;
                 thumbnailPanel.MouseLeave += Interactive_MouseLeave;
                 thumbnailPanel.ThumbnailDragCompleted += ThumbnailPanel_ThumbnailDragCompleted;
 
                 // Create drag cursor image — screenshot thumbnail follows cursor
-                thumbnailPanel.DragCursorImage = CreateRoundedDragThumbnail(task.Image, 128, 10);
+                thumbnailPanel.DragCursorImage = CreateDragCursorPreview(task);
 
                 // No filename label — CleanShot X shows only the image
 
@@ -575,44 +580,63 @@ namespace ShareX
                 btnCornerEdit.Click += (_, __) =>
                 {
                     TouchInteract();
-                    HeldOpen = true;
-                    dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
-                    EditRequested?.Invoke(this);
+                    if (supportsImageActions)
+                    {
+                        EditRequested?.Invoke(this);
+                    }
+                    else if (supportsVideoActions)
+                    {
+                        FileHelpers.OpenFile(Task.Info.FilePath);
+                    }
                 };
 
                 btnCopyCapsule = CreateToolbarButton("\uE8C8"); // Copy icon
                 btnCopyCapsule.Click += (_, __) =>
                 {
                     TouchInteract();
-                    ClipboardHelpers.CopyImageFromFile(Task.Info.FilePath);
+                    if (supportsImageActions)
+                    {
+                        ClipboardHelpers.CopyImageFromFile(Task.Info.FilePath);
+                    }
+                    else
+                    {
+                        ClipboardHelpers.CopyFile(Task.Info.FilePath);
+                    }
                 };
 
                 btnSaveCapsule = CreateToolbarButton("\uE74E"); // Save icon
                 btnSaveCapsule.Click += (_, __) =>
                 {
                     TouchInteract();
-                    Bitmap bmp = Task.Image;
-                    bool disposeBmp = false;
-
-                    if (bmp == null && File.Exists(Task.Info.FilePath))
+                    if (supportsImageActions)
                     {
-                        bmp = ImageHelpers.LoadImage(Task.Info.FilePath);
-                        disposeBmp = bmp != null;
-                    }
+                        Bitmap bmp = Task.Image;
+                        bool disposeBmp = false;
 
-                    if (bmp != null)
-                    {
-                        try
+                        if (bmp == null && File.Exists(Task.Info.FilePath))
                         {
-                            ImageHelpers.SaveImageFileDialog(bmp, Task.Info.FilePath);
+                            bmp = ImageHelpers.LoadImage(Task.Info.FilePath);
+                            disposeBmp = bmp != null;
                         }
-                        finally
+
+                        if (bmp != null)
                         {
-                            if (disposeBmp)
+                            try
                             {
-                                bmp.Dispose();
+                                ImageHelpers.SaveImageFileDialog(bmp, Task.Info.FilePath);
+                            }
+                            finally
+                            {
+                                if (disposeBmp)
+                                {
+                                    bmp.Dispose();
+                                }
                             }
                         }
+                    }
+                    else
+                    {
+                        SaveNonImageFile();
                     }
                 };
 
@@ -627,7 +651,10 @@ namespace ShareX
                 btnCornerPin.Click += (_, __) =>
                 {
                     TouchInteract();
-                    RunDismissAnimation(() => PinRequested?.Invoke(this));
+                    if (supportsImageActions)
+                    {
+                        RunDismissAnimation(() => PinRequested?.Invoke(this));
+                    }
                 };
 
                 WireChromeHover(btnCornerPin);
@@ -638,6 +665,26 @@ namespace ShareX
                 WireChromeHover(btnSaveCapsule);
 
                 contextMenu = CreateContextMenu();
+                contextMenu.Opening += (_, __) =>
+                {
+                    if (!IsPrimary)
+                    {
+                        return;
+                    }
+
+                    lifetime.BeginHold(DateTime.UtcNow);
+                    HoldRequested?.Invoke(this);
+                };
+                contextMenu.Closed += (_, __) =>
+                {
+                    if (!IsPrimary)
+                    {
+                        return;
+                    }
+
+                    lifetime.EndHold(DateTime.UtcNow);
+                    SyncChromeVisibility(true);
+                };
                 ContextMenuStrip = contextMenu;
                 thumbnailPanel.ContextMenuStrip = contextMenu;
 
@@ -647,7 +694,6 @@ namespace ShareX
                     Enabled = true
                 };
                 dismissTimer.Tick += DismissTimer_Tick;
-                dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
 
                 Controls.Add(thumbnailPanel);
                 Controls.Add(btnCornerClose);
@@ -765,13 +811,21 @@ namespace ShareX
 
                         try
                         {
-                            IDataObject dataObject = new DataObject(DataFormats.FileDrop, new string[] { Task.Info.FilePath });
-                            cardDragBox = Rectangle.Empty;
-                            DragDropEffects effect = DoDragDrop(dataObject, DragDropEffects.Copy | DragDropEffects.Move);
-
-                            if (effect != DragDropEffects.None)
+                            using (DragDropDataObjectPackage dataPackage = DragDropDataObjectFactory.CreateForFile(Task.Info.FilePath))
                             {
-                                DragCompleted?.Invoke(this, effect);
+                                if (dataPackage == null)
+                                {
+                                    cardDragBox = Rectangle.Empty;
+                                    return;
+                                }
+
+                                cardDragBox = Rectangle.Empty;
+                                DragDropEffects effect = DoDragDrop(dataPackage.DataObject, DragDropEffects.Copy | DragDropEffects.Move);
+
+                                if (effect != DragDropEffects.None)
+                                {
+                                    DragCompleted?.Invoke(this, effect);
+                                }
                             }
                         }
                         finally
@@ -811,12 +865,11 @@ namespace ShareX
 
                 try
                 {
-                    Bitmap source = Task.Image;
+                    Bitmap source = GetBestPreviewImage(Task.Info.FilePath);
                     bool disposeSource = false;
 
-                    if (source == null && File.Exists(Task.Info.FilePath))
+                    if (source != null)
                     {
-                        source = ImageHelpers.LoadImage(Task.Info.FilePath);
                         disposeSource = true;
                     }
 
@@ -942,8 +995,7 @@ namespace ShareX
                     return;
                 }
 
-                HeldOpen = true;
-                dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
+                lifetime.Touch(DateTime.UtcNow);
                 HoldRequested?.Invoke(this);
             }
 
@@ -1142,7 +1194,7 @@ namespace ShareX
 
                 thumbnailPanel.Location = new Point(SideInset, ThumbTop);
                 thumbnailPanel.ThumbnailSize = new Size(Math.Max(80, Width - SideInset * 2), thumbHeight);
-                thumbnailPanel.UpdateThumbnail(Task.Image);
+                thumbnailPanel.UpdateThumbnail(GetPreviewImageForThumbnail());
 
                 // Toolbar overlays bottom of the thumbnail on hover
                 const int btnSize = 24;
@@ -1187,7 +1239,7 @@ namespace ShareX
                 thumbnailPanel.DragCursorImage?.Dispose();
                 try
                 {
-                    using (Bitmap fresh = ImageHelpers.LoadImage(Task.Info.FilePath))
+                    using (Bitmap fresh = GetBestPreviewImage(Task.Info.FilePath))
                     {
                         thumbnailPanel.DragCursorImage = fresh != null
                             ? CreateRoundedDragThumbnail(fresh, 128, 10)
@@ -1208,8 +1260,7 @@ namespace ShareX
                 if (IsPrimary != isPrimary)
                 {
                     IsPrimary = isPrimary;
-                    HeldOpen = false;
-                    dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
+                    lifetime.Reset(DateTime.UtcNow);
                 }
                 else
                 {
@@ -1230,7 +1281,7 @@ namespace ShareX
                 bool showActions = isFront && isHovering;
                 btnCopyCapsule.Visible = showActions;
                 btnSaveCapsule.Visible = showActions;
-                btnCornerPin.Visible = showActions;
+                btnCornerPin.Visible = showActions && supportsImageActions;
                 btnCornerClose.Visible = showActions;
                 btnCornerEdit.Visible = showActions;
                 btnCornerUpload.Visible = showActions;
@@ -1247,7 +1298,7 @@ namespace ShareX
                     return;
                 }
 
-                if (CaptureOverlayDismissPolicy.ShouldDismiss(DateTime.UtcNow, dismissAtUtc, HeldOpen, pointerInside))
+                if (lifetime.ShouldDismiss(DateTime.UtcNow, pointerInside))
                 {
                     dismissTimer.Stop();
                     BeginDismissThenNotify();
@@ -1263,24 +1314,91 @@ namespace ShareX
             private ContextMenuStrip CreateContextMenu()
             {
                 ContextMenuStrip menu = new ContextMenuStrip();
-                menu.Items.Add("Annotate…", null, (_, __) =>
+                if (supportsImageActions)
                 {
-                    HeldOpen = true;
-                    dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
-                    EditRequested?.Invoke(this);
-                });
-                menu.Items.Add("Copy image", null, (_, __) => ClipboardHelpers.CopyImageFromFile(Task.Info.FilePath));
-                menu.Items.Add("Pin to screen", null, (_, __) =>
+                    menu.Items.Add("Annotate…", null, (_, __) =>
+                    {
+                        lifetime.Touch(DateTime.UtcNow);
+                        EditRequested?.Invoke(this);
+                    });
+                    menu.Items.Add("Copy image", null, (_, __) => ClipboardHelpers.CopyImageFromFile(Task.Info.FilePath));
+                    menu.Items.Add("Pin to screen", null, (_, __) =>
+                    {
+                        TouchInteract();
+                        RunDismissAnimation(() => PinRequested?.Invoke(this));
+                    });
+                }
+                else if (supportsVideoActions)
                 {
-                    TouchInteract();
-                    RunDismissAnimation(() => PinRequested?.Invoke(this));
-                });
+                    menu.Items.Add("Open", null, (_, __) => FileHelpers.OpenFile(Task.Info.FilePath));
+                    menu.Items.Add("Copy file", null, (_, __) => ClipboardHelpers.CopyFile(Task.Info.FilePath));
+                }
+
                 menu.Items.Add("Upload", null, (_, __) => UploadManager.UploadFile(Task.Info.FilePath, Task.Info.TaskSettings));
                 menu.Items.Add("Show in folder", null, (_, __) => FileHelpers.OpenFolderWithFile(Task.Info.FilePath));
                 menu.Items.Add("Hide overlays temporarily", null, (_, __) => CaptureOverlayForm.RequestHideStackTemporary());
                 menu.Items.Add("Dismiss", null, (_, __) => BeginDismissThenNotify());
                 ShareXResources.ApplyCustomThemeToContextMenuStrip(menu);
                 return menu;
+            }
+
+            private Bitmap GetPreviewImageForThumbnail()
+            {
+                return supportsImageActions ? Task.Image : null;
+            }
+
+            private void SaveNonImageFile()
+            {
+                if (string.IsNullOrEmpty(Task?.Info?.FilePath) || !File.Exists(Task.Info.FilePath))
+                {
+                    return;
+                }
+
+                using (SaveFileDialog saveFileDialog = new SaveFileDialog())
+                {
+                    saveFileDialog.FileName = Path.GetFileName(Task.Info.FilePath);
+                    saveFileDialog.InitialDirectory = Path.GetDirectoryName(Task.Info.FilePath);
+                    saveFileDialog.OverwritePrompt = true;
+
+                    if (saveFileDialog.ShowDialog() == DialogResult.OK && !string.IsNullOrEmpty(saveFileDialog.FileName))
+                    {
+                        File.Copy(Task.Info.FilePath, saveFileDialog.FileName, true);
+                    }
+                }
+            }
+
+            private Bitmap CreateDragCursorPreview(WorkerTask task)
+            {
+                using (Bitmap preview = GetBestPreviewImage(task?.Info?.FilePath))
+                {
+                    return preview != null ? CreateRoundedDragThumbnail(preview, 128, 10) : null;
+                }
+            }
+
+            private static Bitmap GetBestPreviewImage(string filePath)
+            {
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                {
+                    return null;
+                }
+
+                try
+                {
+                    if (FileHelpers.IsImageFile(filePath))
+                    {
+                        return ImageHelpers.LoadImage(filePath);
+                    }
+
+                    if (FileHelpers.IsVideoFile(filePath))
+                    {
+                        return NativeMethods.GetFileThumbnail(filePath, new Size(256, 256));
+                    }
+                }
+                catch
+                {
+                }
+
+                return null;
             }
 
             private void Interactive_MouseEnter(object sender, EventArgs e)
@@ -1291,8 +1409,7 @@ namespace ShareX
                 }
 
                 isHovering = true;
-                HeldOpen = true;
-                dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
+                lifetime.BeginHold(DateTime.UtcNow);
                 HoldRequested?.Invoke(this);
                 SyncChromeVisibility(true);
             }
@@ -1306,8 +1423,7 @@ namespace ShareX
                     if (!inside)
                     {
                         isHovering = false;
-                        HeldOpen = false;
-                        dismissAtUtc = CaptureOverlayDismissPolicy.GetNextDismissAt(DateTime.UtcNow);
+                        lifetime.EndHold(DateTime.UtcNow);
                         SyncChromeVisibility(true);
                     }
                 }));

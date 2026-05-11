@@ -436,7 +436,7 @@ namespace ShareX
         private static bool CanShowCaptureOverlay(WorkerTask task, TaskInfo info)
         {
             return task != null && info != null && info.Job == TaskJob.Job && !task.StopRequested &&
-                !string.IsNullOrEmpty(info.FilePath) && File.Exists(info.FilePath) && FileHelpers.IsImageFile(info.FilePath);
+                CaptureOverlayMediaSupport.SupportsOverlay(info.FilePath);
         }
 
         private static void Task_UploadersConfigWindowRequested(IUploaderService uploaderService)

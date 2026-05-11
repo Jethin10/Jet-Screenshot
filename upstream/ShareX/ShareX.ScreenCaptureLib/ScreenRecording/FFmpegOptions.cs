@@ -42,29 +42,126 @@ namespace ShareX.ScreenCaptureLib
         public string CustomCommands { get; set; } = "";
 
         // Video
-        public FFmpegPreset x264_Preset { get; set; } = FFmpegPreset.ultrafast;
-        public int x264_CRF { get; set; } = 28;
+        public FFmpegPreset x264_Preset { get; set; } = FFmpegPreset.slow;
+        public int x264_CRF { get; set; } = 18;
         public bool x264_Use_Bitrate { get; set; } = false;
-        public int x264_Bitrate { get; set; } = 3000; // kbps
-        public int VPx_Bitrate { get; set; } = 3000; // kbps
-        public int XviD_QScale { get; set; } = 10;
-        public FFmpegNVENCPreset NVENC_Preset { get; set; } = FFmpegNVENCPreset.p4;
-        public FFmpegNVENCTune NVENC_Tune { get; set; } = FFmpegNVENCTune.ll;
-        public int NVENC_Bitrate { get; set; } = 3000; // kbps
+        public int x264_Bitrate { get; set; } = 16000; // kbps
+        public int VPx_Bitrate { get; set; } = 12000; // kbps
+        public int XviD_QScale { get; set; } = 4;
+        public FFmpegNVENCPreset NVENC_Preset { get; set; } = FFmpegNVENCPreset.p7;
+        public FFmpegNVENCTune NVENC_Tune { get; set; } = FFmpegNVENCTune.hq;
+        public int NVENC_Bitrate { get; set; } = 16000; // kbps
         public FFmpegPaletteGenStatsMode GIFStatsMode { get; set; } = FFmpegPaletteGenStatsMode.full;
         public FFmpegPaletteUseDither GIFDither { get; set; } = FFmpegPaletteUseDither.sierra2_4a;
         public int GIFBayerScale { get; set; } = 2;
-        public FFmpegAMFUsage AMF_Usage { get; set; } = FFmpegAMFUsage.lowlatency;
-        public FFmpegAMFQuality AMF_Quality { get; set; } = FFmpegAMFQuality.speed;
-        public int AMF_Bitrate { get; set; } = 3000; // kbps
-        public FFmpegQSVPreset QSV_Preset { get; set; } = FFmpegQSVPreset.fast;
-        public int QSV_Bitrate { get; set; } = 3000; // kbps
+        public FFmpegAMFUsage AMF_Usage { get; set; } = FFmpegAMFUsage.high_quality;
+        public FFmpegAMFQuality AMF_Quality { get; set; } = FFmpegAMFQuality.quality;
+        public int AMF_Bitrate { get; set; } = 16000; // kbps
+        public FFmpegQSVPreset QSV_Preset { get; set; } = FFmpegQSVPreset.veryslow;
+        public int QSV_Bitrate { get; set; } = 16000; // kbps
 
         // Audio
-        public int AAC_Bitrate { get; set; } = 128; // kbps
-        public int Opus_Bitrate { get; set; } = 128; // kbps
+        public int AAC_Bitrate { get; set; } = 192; // kbps
+        public int Opus_Bitrate { get; set; } = 192; // kbps
         public int Vorbis_QScale { get; set; } = 3;
         public int MP3_QScale { get; set; } = 4;
+
+        public bool ApplyProductionRecordingDefaultsIfUsingLegacyDefaults()
+        {
+            bool changed = false;
+
+            if (x264_Preset == FFmpegPreset.ultrafast)
+            {
+                x264_Preset = FFmpegPreset.slow;
+                changed = true;
+            }
+
+            if (x264_CRF == 28)
+            {
+                x264_CRF = 18;
+                changed = true;
+            }
+
+            if (x264_Bitrate == 3000)
+            {
+                x264_Bitrate = 16000;
+                changed = true;
+            }
+
+            if (VPx_Bitrate == 3000)
+            {
+                VPx_Bitrate = 12000;
+                changed = true;
+            }
+
+            if (XviD_QScale == 10)
+            {
+                XviD_QScale = 4;
+                changed = true;
+            }
+
+            if (NVENC_Preset == FFmpegNVENCPreset.p4)
+            {
+                NVENC_Preset = FFmpegNVENCPreset.p7;
+                changed = true;
+            }
+
+            if (NVENC_Tune == FFmpegNVENCTune.ll)
+            {
+                NVENC_Tune = FFmpegNVENCTune.hq;
+                changed = true;
+            }
+
+            if (NVENC_Bitrate == 3000)
+            {
+                NVENC_Bitrate = 16000;
+                changed = true;
+            }
+
+            if (AMF_Usage == FFmpegAMFUsage.lowlatency)
+            {
+                AMF_Usage = FFmpegAMFUsage.high_quality;
+                changed = true;
+            }
+
+            if (AMF_Quality == FFmpegAMFQuality.speed)
+            {
+                AMF_Quality = FFmpegAMFQuality.quality;
+                changed = true;
+            }
+
+            if (AMF_Bitrate == 3000)
+            {
+                AMF_Bitrate = 16000;
+                changed = true;
+            }
+
+            if (QSV_Preset == FFmpegQSVPreset.fast)
+            {
+                QSV_Preset = FFmpegQSVPreset.veryslow;
+                changed = true;
+            }
+
+            if (QSV_Bitrate == 3000)
+            {
+                QSV_Bitrate = 16000;
+                changed = true;
+            }
+
+            if (AAC_Bitrate == 128)
+            {
+                AAC_Bitrate = 192;
+                changed = true;
+            }
+
+            if (Opus_Bitrate == 128)
+            {
+                Opus_Bitrate = 192;
+                changed = true;
+            }
+
+            return changed;
+        }
 
         public string FFmpegPath
         {

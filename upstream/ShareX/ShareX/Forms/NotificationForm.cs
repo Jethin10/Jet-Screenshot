@@ -305,8 +305,13 @@ namespace ShareX
                 bool isOverThreshold = !dragThresholdRectangle.Contains(e.Location);
                 if (isOverThreshold && !string.IsNullOrEmpty(Config.FilePath) && File.Exists(Config.FilePath))
                 {
-                    IDataObject dataObject = new DataObject(DataFormats.FileDrop, new string[] { Config.FilePath });
-                    DoDragDrop(dataObject, DragDropEffects.Copy | DragDropEffects.Move);
+                    using (DragDropDataObjectPackage dataPackage = DragDropDataObjectFactory.CreateForFile(Config.FilePath))
+                    {
+                        if (dataPackage != null)
+                        {
+                            DoDragDrop(dataPackage.DataObject, DragDropEffects.Copy | DragDropEffects.Move);
+                        }
+                    }
 
                     isMouseDragging = false;
                 }

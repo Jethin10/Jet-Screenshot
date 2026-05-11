@@ -293,6 +293,8 @@ namespace ShareX
                     DefaultTaskSettings.CaptureSettings.SurfaceOptions.BackgroundDimStrength = 0;
                 }
             }
+
+            DefaultTaskSettings?.CaptureSettings?.ApplyProductionRecordingDefaultsIfUsingLegacyDefaults();
         }
 
         public static void HistoryConnect()
@@ -376,6 +378,11 @@ namespace ShareX
                         taskSettings.CaptureSettings.FFmpegOptions.FixSources();
                     }
                 }
+            }
+
+            foreach (TaskSettings taskSettings in HotkeysConfig.Hotkeys.Select(x => x.TaskSettings))
+            {
+                taskSettings?.CaptureSettings?.ApplyProductionRecordingDefaultsIfUsingLegacyDefaults();
             }
         }
 

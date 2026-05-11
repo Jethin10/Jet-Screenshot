@@ -5,6 +5,7 @@ $project = Join-Path $root "upstream\ShareX\ShareX\ShareX.csproj"
 $buildOutputDir = Join-Path $root "upstream\ShareX\ShareX\bin\Release\win-x64"
 $builtExe = Join-Path $buildOutputDir "ShareX.exe"
 $destDir = Join-Path $root "release"
+$ensureFFmpegScript = Join-Path $PSScriptRoot "ensure-ffmpeg.ps1"
 
 Write-Host "Stopping ShareX if running..."
 Get-Process -Name "ShareX" -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -20,6 +21,12 @@ if (-not (Test-Path $builtExe)) {
 New-Item -ItemType Directory -Force -Path $destDir | Out-Null
 Get-ChildItem -LiteralPath $destDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 Get-ChildItem -LiteralPath $buildOutputDir -Force | Copy-Item -Destination $destDir -Recurse -Force
+
+if (-not (Test-Path -LiteralPath $ensureFFmpegScript)) {
+    throw "Missing helper script: $ensureFFmpegScript"
+}
+
+& $ensureFFmpegScript -TargetDirectory $destDir
 
 Write-Host "Deployed to: $destDir"
 Write-Host "Build output: $buildOutputDir"

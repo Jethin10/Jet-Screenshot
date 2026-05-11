@@ -394,8 +394,8 @@ namespace ShareX
         #region Capture / Screen recorder
 
         public FFmpegOptions FFmpegOptions = new FFmpegOptions();
-        public int ScreenRecordFPS = 30;
-        public int GIFFPS = 15;
+        public int ScreenRecordFPS = 60;
+        public int GIFFPS = 24;
         public bool ScreenRecordShowCursor = true;
         public bool ScreenRecordAutoStart = true;
         public float ScreenRecordStartDelay = 0f;
@@ -418,6 +418,25 @@ namespace ShareX
         public OCROptions OCROptions = new OCROptions();
 
         #endregion Capture / OCR
+
+        public bool ApplyProductionRecordingDefaultsIfUsingLegacyDefaults()
+        {
+            bool changed = false;
+
+            if (ScreenRecordFPS == 30)
+            {
+                ScreenRecordFPS = 60;
+                changed = true;
+            }
+
+            if (GIFFPS == 15)
+            {
+                GIFFPS = 24;
+                changed = true;
+            }
+
+            return FFmpegOptions.ApplyProductionRecordingDefaultsIfUsingLegacyDefaults() || changed;
+        }
     }
 
     public class TaskSettingsUpload

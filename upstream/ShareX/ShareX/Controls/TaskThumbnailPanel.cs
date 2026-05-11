@@ -602,13 +602,21 @@ namespace ShareX
 
                     try
                     {
-                        IDataObject dataObject = new DataObject(DataFormats.FileDrop, new string[] { Task.Info.FilePath });
-                        dragBoxFromMouseDown = Rectangle.Empty;
-                        DragDropEffects effect = pbThumbnail.DoDragDrop(dataObject, DragDropEffects.Copy | DragDropEffects.Move);
-
-                        if (effect != DragDropEffects.None)
+                        using (DragDropDataObjectPackage dataPackage = DragDropDataObjectFactory.CreateForFile(Task.Info.FilePath))
                         {
-                            OnThumbnailDragCompleted(effect);
+                            if (dataPackage == null)
+                            {
+                                dragBoxFromMouseDown = Rectangle.Empty;
+                                return;
+                            }
+
+                            dragBoxFromMouseDown = Rectangle.Empty;
+                            DragDropEffects effect = pbThumbnail.DoDragDrop(dataPackage.DataObject, DragDropEffects.Copy | DragDropEffects.Move);
+
+                            if (effect != DragDropEffects.None)
+                            {
+                                OnThumbnailDragCompleted(effect);
+                            }
                         }
                     }
                     finally

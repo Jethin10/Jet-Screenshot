@@ -9,10 +9,11 @@ namespace ShareX.Tests
         public void NewestCaptureGetsFrontCardPosition()
         {
             var items = CaptureOverlayStackLayout.Calculate(2);
+            int verticalStep = CaptureOverlayStackLayout.FrontCardSize.Height + CaptureOverlayStackLayout.CardGap;
 
             Assert.Equal(2, items.Count);
             Assert.True(items[0].IsPrimary);
-            Assert.Equal(new Point(CaptureOverlayStackLayout.HorizontalInset, CaptureOverlayStackLayout.VerticalOffset), items[0].Location);
+            Assert.Equal(new Point(0, verticalStep), items[0].Location);
             Assert.Equal(CaptureOverlayStackLayout.FrontCardSize, items[0].Size);
         }
 
@@ -20,10 +21,11 @@ namespace ShareX.Tests
         public void OlderCapturesRemainVisibleAboveNewest()
         {
             var items = CaptureOverlayStackLayout.Calculate(3);
+            int verticalStep = CaptureOverlayStackLayout.FrontCardSize.Height + CaptureOverlayStackLayout.CardGap;
 
-            Assert.Equal(new Point(CaptureOverlayStackLayout.HorizontalInset, 0), items[2].Location);
-            Assert.Equal(new Point(CaptureOverlayStackLayout.HorizontalInset, CaptureOverlayStackLayout.VerticalOffset), items[1].Location);
-            Assert.Equal(new Point(CaptureOverlayStackLayout.HorizontalInset, CaptureOverlayStackLayout.VerticalOffset * 2), items[0].Location);
+            Assert.Equal(new Point(0, 0), items[2].Location);
+            Assert.Equal(new Point(0, verticalStep), items[1].Location);
+            Assert.Equal(new Point(0, verticalStep * 2), items[0].Location);
         }
 
         [Fact]
@@ -31,10 +33,11 @@ namespace ShareX.Tests
         {
             var items = CaptureOverlayStackLayout.Calculate(8);
             var container = CaptureOverlayStackLayout.GetContainerSize(8);
+            int verticalStep = CaptureOverlayStackLayout.FrontCardSize.Height + CaptureOverlayStackLayout.CardGap;
 
             Assert.Equal(CaptureOverlayStackLayout.MaxCards, items.Count);
             Assert.Equal(CaptureOverlayStackLayout.FrontCardSize.Width + CaptureOverlayStackLayout.ShadowDepth, container.Width);
-            Assert.Equal(CaptureOverlayStackLayout.FrontCardSize.Height + ((CaptureOverlayStackLayout.MaxCards - 1) * CaptureOverlayStackLayout.VerticalOffset) + CaptureOverlayStackLayout.ShadowDepth, container.Height);
+            Assert.Equal(CaptureOverlayStackLayout.FrontCardSize.Height + ((CaptureOverlayStackLayout.MaxCards - 1) * verticalStep) + CaptureOverlayStackLayout.ShadowDepth, container.Height);
         }
 
         [Fact]
