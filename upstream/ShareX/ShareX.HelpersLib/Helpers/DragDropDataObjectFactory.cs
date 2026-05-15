@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -61,9 +61,10 @@ namespace ShareX.HelpersLib
             DataObject dataObject = new DataObject();
             DragDropDataObjectPackage package = new DragDropDataObjectPackage(dataObject);
 
-            dataObject.SetData(DataFormats.FileDrop, true, new[] { filePath });
-            dataObject.SetData(DataFormats.UnicodeText, false, filePath);
-            dataObject.SetData(DataFormats.Text, false, filePath);
+            string[] paths = new[] { filePath };
+            dataObject.SetData(DataFormats.FileDrop, true, paths);
+            dataObject.SetData("FileNameW", true, paths);
+            dataObject.SetData("FileName", true, paths);
 
             if (FileHelpers.IsImageFile(filePath))
             {
@@ -72,6 +73,7 @@ namespace ShareX.HelpersLib
 
             return package;
         }
+
 
         private static void AddImageRepresentations(DragDropDataObjectPackage package, string filePath)
         {
@@ -114,8 +116,8 @@ namespace ShareX.HelpersLib
             dibStream.Position = 0;
             package.DataObject.SetData(DataFormats.Dib, false, dibStream);
 
-            string htmlFragment = GenerateHtmlFragment(filePath);
-            package.DataObject.SetData(DataFormats.Html, htmlFragment);
+            // Removed DataFormats.Html to prevent Electron apps (like Discord/Slack) 
+            // from treating the drop as an HTML image paste rather than a file upload.
         }
 
         private static string GenerateHtmlFragment(string filePath)

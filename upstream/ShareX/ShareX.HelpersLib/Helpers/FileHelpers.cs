@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -204,6 +204,44 @@ namespace ShareX.HelpersLib
 
             return Path.GetFullPath(path);
         }
+
+        public static bool IsCommandExists(string command)
+        {
+            if (string.IsNullOrEmpty(command)) return false;
+
+            if (File.Exists(command)) return true;
+
+            string path = Environment.GetEnvironmentVariable("PATH");
+
+            if (!string.IsNullOrEmpty(path))
+            {
+                string[] paths = path.Split(Path.PathSeparator);
+
+                foreach (string p in paths)
+                {
+                    try
+                    {
+                        string fullPath = Path.Combine(p, command);
+
+                        if (File.Exists(fullPath))
+                        {
+                            return true;
+                        }
+
+                        if (!command.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(fullPath + ".exe"))
+                        {
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+
+            return false;
+        }
+
 
         public static string GetPathRoot(string path)
         {

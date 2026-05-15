@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -786,12 +786,41 @@ namespace ShareX
 
         public static async Task OpenScrollingCapture(TaskSettings taskSettings = null)
         {
+            if (JetSnapScrollingCaptureController.IsCapturing)
+            {
+                DebugHelper.WriteLine("Scrolling capture already active. Stopping current session.");
+                JetSnapScrollingCaptureController.StopCapture();
+                return;
+            }
+
+            DebugHelper.WriteLine("OpenScrollingCapture triggered (JetSnap v2).");
+
             if (taskSettings == null) taskSettings = TaskSettings.GetDefaultTaskSettings();
 
-            await ScrollingCaptureForm.StartStopScrollingCapture(taskSettings.CaptureSettingsReference.ScrollingCaptureOptions,
-                img => UploadManager.RunImageTask(img, taskSettings),
-                () => PlayNotificationSoundAsync(NotificationSound.ActionCompleted, taskSettings));
+            CaptureOverlayForm.RequestHideStackTemporary();
+            taskSettings.AfterCaptureJob |= AfterCaptureTasks.SaveImageToFile;
+
+            await JetSnapScrollingCaptureController.StartCaptureAsync((Bitmap img) =>
+            {
+                if (img != null)
+                {
+                    UploadManager.RunImageTask(img, taskSettings, skipQuickTaskMenu: true, skipAfterCaptureWindow: true);
+                }
+
+                Program.MainForm.BeginInvoke((Action)(() =>
+                {
+                    if (img != null)
+                    {
+                        PlayNotificationSoundAsync(NotificationSound.ActionCompleted, taskSettings);
+                    }
+                    CaptureOverlayForm.RestoreStack();
+                }));
+            });
         }
+
+
+
+
 
         public static void OpenAutoCapture(TaskSettings taskSettings = null)
         {
@@ -963,6 +992,7 @@ namespace ShareX
             }
 
             try
+
             {
                 MetadataForm.StripFileMetadata(filePath);
 
@@ -1834,6 +1864,9 @@ namespace ShareX
             }
         }
 
+        private static string lastFailedFFmpegPath;
+        private static DateTime lastFFmpegAlertTime;
+
         public static bool CheckFFmpeg(TaskSettings taskSettings)
         {
             if (!Environment.Is64BitOperatingSystem && !taskSettings.CaptureSettings.FFmpegOptions.OverrideCLIPath)
@@ -1848,14 +1881,26 @@ namespace ShareX
 
             if (!File.Exists(ffmpegPath))
             {
-                MessageBox.Show(Resources.FFmpegDoesNotExistAtTheFollowingPath + "\r\n" + ffmpegPath,
-                    "ShareX - " + Resources.FFmpegIsMissing, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                if (FileHelpers.IsCommandExists("ffmpeg"))
+                {
+                    return true;
+                }
+
+                if (lastFailedFFmpegPath != ffmpegPath || DateTime.Now - lastFFmpegAlertTime > TimeSpan.FromSeconds(5))
+                {
+                    lastFailedFFmpegPath = ffmpegPath;
+                    lastFFmpegAlertTime = DateTime.Now;
+
+                    MessageBox.Show(Resources.FFmpegDoesNotExistAtTheFollowingPath + "\r\n" + ffmpegPath,
+                        "ShareX - " + Resources.FFmpegIsMissing, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
 
                 return false;
             }
 
             return true;
         }
+
 
         public static bool CheckExifTool()
         {

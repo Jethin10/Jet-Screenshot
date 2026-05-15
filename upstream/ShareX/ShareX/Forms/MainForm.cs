@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -362,7 +362,21 @@ namespace ShareX
             if (Program.HotkeyManager == null)
             {
                 Program.HotkeyManager = new HotkeyManager(this);
+                Program.HotkeyManager.HotkeyTrigger -= HandleHotkeys;
                 Program.HotkeyManager.HotkeyTrigger += HandleHotkeys;
+            }
+
+
+            var scrollingHotkey = Program.HotkeysConfig.Hotkeys.FirstOrDefault(h => h.TaskSettings.Job == HotkeyType.ScrollingCapture);
+            if (scrollingHotkey == null)
+            {
+                Program.HotkeysConfig.Hotkeys.Add(new HotkeySettings(HotkeyType.ScrollingCapture, Keys.Control | Keys.Alt | Keys.S));
+                SettingManager.SaveHotkeysConfigAsync();
+            }
+            else if (scrollingHotkey.HotkeyInfo.Hotkey == (Keys.Control | Keys.Alt | Keys.PrintScreen))
+            {
+                scrollingHotkey.HotkeyInfo.Hotkey = Keys.Control | Keys.Alt | Keys.S;
+                SettingManager.SaveHotkeysConfigAsync();
             }
 
             Program.HotkeyManager.UpdateHotkeys(Program.HotkeysConfig.Hotkeys, !Program.IgnoreHotkeyWarning);
@@ -386,12 +400,22 @@ namespace ShareX
             }
         }
 
+        private DateTime lastHotkeyTime = DateTime.MinValue;
+
         private async void HandleHotkeys(HotkeySettings hotkeySetting)
         {
+            if ((DateTime.UtcNow - lastHotkeyTime).TotalMilliseconds < 500)
+            {
+                DebugHelper.WriteLine("Hotkey ignored (duplicate).");
+                return;
+            }
+            lastHotkeyTime = DateTime.UtcNow;
+
             DebugHelper.WriteLine("Hotkey triggered. " + hotkeySetting);
 
             await TaskHelpers.ExecuteJob(hotkeySetting.TaskSettings);
         }
+
 
         private void UpdateWorkflowsMenu()
         {

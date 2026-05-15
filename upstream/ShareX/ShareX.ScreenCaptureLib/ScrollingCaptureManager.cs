@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -34,7 +34,8 @@ using System.Threading.Tasks;
 
 namespace ShareX.ScreenCaptureLib
 {
-    internal class ScrollingCaptureManager : IDisposable
+    public class ScrollingCaptureManager : IDisposable
+
     {
         public ScrollingCaptureOptions Options { get; private set; }
         public Bitmap Result { get; private set; }
@@ -46,7 +47,9 @@ namespace ShareX.ScreenCaptureLib
         private ScrollingCaptureStatus status;
         private int bestMatchCount, bestMatchIndex, bestIgnoreBottomOffset;
         private WindowInfo selectedWindow;
+        public Rectangle SelectedRectangle => selectedRectangle;
         private Rectangle selectedRectangle;
+
 
         public ScrollingCaptureManager(ScrollingCaptureOptions options)
         {
@@ -81,7 +84,7 @@ namespace ShareX.ScreenCaptureLib
 
         public async Task<ScrollingCaptureStatus> StartCapture()
         {
-            if (!IsCapturing && selectedWindow != null && !selectedRectangle.IsEmpty)
+            if (!IsCapturing && !selectedRectangle.IsEmpty)
             {
                 IsCapturing = true;
                 stopRequested = false;
@@ -101,7 +104,7 @@ namespace ShareX.ScreenCaptureLib
 
                 try
                 {
-                    selectedWindow.Activate();
+                    selectedWindow?.Activate();
 
                     await Task.Delay(Options.StartDelay);
 
@@ -122,7 +125,7 @@ namespace ShareX.ScreenCaptureLib
                     {
                         lastScreenshot = screenshot.CaptureRectangle(selectedRectangle);
 
-                        if (CompareLastTwoImages())
+                        if (Options.ScrollMethod != ScrollMethod.Manual && CompareLastTwoImages())
                         {
                             break;
                         }
@@ -147,7 +150,11 @@ namespace ShareX.ScreenCaptureLib
                                     NativeMethods.SendMessage(selectedWindow.Handle, (int)WindowsMessages.VSCROLL, (int)ScrollBarCommands.SB_LINEDOWN, 0);
                                 }
                                 break;
+                            case ScrollMethod.Manual:
+                                // User scrolls manually, we just capture and combine
+                                break;
                         }
+
 
                         Stopwatch timer = Stopwatch.StartNew();
 
@@ -160,10 +167,11 @@ namespace ShareX.ScreenCaptureLib
                                 Result?.Dispose();
                                 Result = newResult;
                             }
-                            else
+                            else if (Options.ScrollMethod != ScrollMethod.Manual)
                             {
                                 break;
                             }
+
                         }
 
                         if (stopRequested)

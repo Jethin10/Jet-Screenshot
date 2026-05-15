@@ -233,7 +233,10 @@ namespace ShareX.ScreenCaptureLib
                         }
                         else
                         {
-                            isMaximized = true;
+                            // Do not maximize; limit to the working area minus a small margin so it's fully editable and windowed
+                            size = new Size(
+                                Math.Min(canvasWindowSize.Width, activeScreenWorkingArea.Width - 100),
+                                Math.Min(canvasWindowSize.Height, activeScreenWorkingArea.Height - 100));
                         }
                     }
 

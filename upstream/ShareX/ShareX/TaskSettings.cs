@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -338,9 +338,9 @@ namespace ShareX
 
         public EImageFormat ImageFormat = EImageFormat.PNG;
         public PNGBitDepth ImagePNGBitDepth = PNGBitDepth.Default;
-        public int ImageJPEGQuality = 90;
+        public int ImageJPEGQuality = 100;
         public GIFQuality ImageGIFQuality = GIFQuality.Default;
-        public bool ImageAutoUseJPEG = true;
+        public bool ImageAutoUseJPEG = false;
         public int ImageAutoUseJPEGSize = 2048;
         public bool ImageAutoJPEGQuality = false;
         public FileExistAction FileExistAction = FileExistAction.Ask;

@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -25,6 +25,8 @@
 
 using ShareX.HelpersLib;
 using System;
+using System.IO;
+
 
 namespace ShareX.ScreenCaptureLib
 {
@@ -43,7 +45,7 @@ namespace ShareX.ScreenCaptureLib
 
         // Video
         public FFmpegPreset x264_Preset { get; set; } = FFmpegPreset.slow;
-        public int x264_CRF { get; set; } = 18;
+        public int x264_CRF { get; set; } = 15;
         public bool x264_Use_Bitrate { get; set; } = false;
         public int x264_Bitrate { get; set; } = 16000; // kbps
         public int VPx_Bitrate { get; set; } = 12000; // kbps
@@ -172,7 +174,15 @@ namespace ShareX.ScreenCaptureLib
                     return FileHelpers.GetAbsolutePath(CLIPath);
                 }
 
-                return FileHelpers.GetAbsolutePath("ffmpeg.exe");
+                string localPath = FileHelpers.GetAbsolutePath("ffmpeg.exe");
+
+                if (File.Exists(localPath))
+                {
+                    return localPath;
+                }
+
+                return "ffmpeg";
+
             }
         }
 

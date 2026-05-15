@@ -1,4 +1,4 @@
-﻿#region License Information (GPL v3)
+#region License Information (GPL v3)
 
 /*
     ShareX - A program that allows you to take screenshots and share any file type
@@ -37,7 +37,9 @@ namespace ShareX.ScreenCaptureLib
     {
         private static readonly object lockObject = new object();
 
+        private static bool isProcessing = false;
         private static ScrollingCaptureForm instance;
+
 
         public event Action<Bitmap> UploadRequested;
         public event Action PlayNotificationSound;
@@ -57,34 +59,62 @@ namespace ShareX.ScreenCaptureLib
             manager = new ScrollingCaptureManager(Options);
         }
 
-        public static async Task StartStopScrollingCapture(ScrollingCaptureOptions options, Action<Bitmap> uploadRequested = null, Action playNotificationSound = null)
+        public static async Task StartStopScrollingCapture(ScrollingCaptureOptions options, Action<Bitmap> uploadRequested = null, Action playNotificationSound = null, bool showDialog = true)
+
         {
-            if (instance == null || instance.IsDisposed)
+            if (isProcessing || (instance != null && instance.isClosing)) return;
+
+            ScrollingCaptureForm formToStart = null;
+
+
+            try
             {
-                lock (lockObject)
+                isProcessing = true;
+
+                if (instance == null || instance.IsDisposed)
                 {
-                    if (instance == null || instance.IsDisposed)
+                    lock (lockObject)
                     {
-                        instance = new ScrollingCaptureForm(options);
-
-                        if (uploadRequested != null)
+                        if (instance == null || instance.IsDisposed)
                         {
-                            instance.UploadRequested += uploadRequested;
-                        }
+                            instance = new ScrollingCaptureForm(options);
 
-                        if (playNotificationSound != null)
-                        {
-                            instance.PlayNotificationSound += playNotificationSound;
-                        }
+                            if (uploadRequested != null)
+                            {
+                                instance.UploadRequested += uploadRequested;
+                            }
 
-                        instance.Show();
+                            if (playNotificationSound != null)
+                            {
+                                instance.PlayNotificationSound += playNotificationSound;
+                            }
+
+                            if (showDialog)
+                            {
+                                instance.Show();
+                            }
+
+                            formToStart = instance;
+                        }
                     }
                 }
+                else
+                {
+                    formToStart = instance;
+                }
+
+                if (formToStart != null)
+                {
+                    await formToStart.StartStopScrollingCapture();
+                }
             }
-            else
+            finally
             {
-                await instance.StartStopScrollingCapture();
+                await Task.Delay(500); // Cooldown to prevent accidental double-triggers
+                isProcessing = false;
             }
+
+
         }
 
         public async Task StartStopScrollingCapture()
@@ -93,11 +123,21 @@ namespace ShareX.ScreenCaptureLib
             {
                 manager.StopCapture();
             }
-            else
+            else if (!isClosing)
             {
                 await SelectWindow();
             }
         }
+
+        private bool isClosing = false;
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            isClosing = true;
+            instance = null;
+            base.OnFormClosed(e);
+        }
+
 
         protected override void Dispose(bool disposing)
         {
@@ -119,7 +159,8 @@ namespace ShareX.ScreenCaptureLib
 
         private async Task StartCapture()
         {
-            WindowState = FormWindowState.Minimized;
+            this.Hide();
+
             btnCapture.Enabled = false;
             btnUpload.Enabled = false;
             btnCopy.Enabled = false;
@@ -129,23 +170,30 @@ namespace ShareX.ScreenCaptureLib
 
             try
             {
-                ScrollingCaptureStatus status = await manager.StartCapture();
-
-                switch (status)
+                using (ScrollingCaptureStopForm stopForm = new ScrollingCaptureStopForm(manager.SelectedRectangle))
                 {
-                    case ScrollingCaptureStatus.Failed:
-                        pbStatus.Image = Resources.control_record;
-                        break;
-                    case ScrollingCaptureStatus.PartiallySuccessful:
-                        pbStatus.Image = Resources.control_record_yellow;
-                        break;
-                    case ScrollingCaptureStatus.Successful:
-                        pbStatus.Image = Resources.control_record_green;
-                        break;
-                }
+                    stopForm.StopRequested += () => manager.StopCapture();
+                    stopForm.Show();
 
-                OnPlayNotificationSound();
+                    ScrollingCaptureStatus status = await manager.StartCapture();
+
+                    switch (status)
+                    {
+                        case ScrollingCaptureStatus.Failed:
+                            pbStatus.Image = Resources.control_record;
+                            break;
+                        case ScrollingCaptureStatus.PartiallySuccessful:
+                            pbStatus.Image = Resources.control_record_yellow;
+                            break;
+                        case ScrollingCaptureStatus.Successful:
+                            pbStatus.Image = Resources.control_record_green;
+                            break;
+                    }
+
+                    OnPlayNotificationSound();
+                }
             }
+
             catch (Exception e)
             {
                 DebugHelper.WriteException(e);
@@ -156,14 +204,18 @@ namespace ShareX.ScreenCaptureLib
             btnCapture.Enabled = true;
             btnOptions.Enabled = true;
 
+            if (Options.AutoUpload)
+            {
+                UploadResult();
+                this.Close();
+                return;
+            }
+
+
             LoadImage(manager.Result);
 
             this.ForceActivate();
 
-            if (Options.AutoUpload)
-            {
-                UploadResult();
-            }
         }
 
         private void LoadImage(Bitmap bmp)
@@ -180,10 +232,12 @@ namespace ShareX.ScreenCaptureLib
 
         private async Task SelectWindow()
         {
-            WindowState = FormWindowState.Minimized;
-            Thread.Sleep(250);
+            this.Hide();
+
+            await Task.Delay(250);
 
             if (manager.SelectWindow())
+
             {
                 await StartCapture();
             }
@@ -219,10 +273,14 @@ namespace ShareX.ScreenCaptureLib
             PlayNotificationSound?.Invoke();
         }
 
-        private async void ScrollingCaptureForm_Load(object sender, EventArgs e)
+        public static void StopCurrentCapture()
         {
-            await SelectWindow();
+            if (instance != null && !instance.isClosing)
+            {
+                instance.manager.StopCapture();
+            }
         }
+
 
         private void ScrollingCaptureForm_Activated(object sender, EventArgs e)
         {
@@ -283,5 +341,67 @@ namespace ShareX.ScreenCaptureLib
                 pOutput.Cursor = Cursors.Default;
             }
         }
+
+        private class ScrollingCaptureStopForm : Form
+        {
+            public event Action StopRequested;
+
+            protected override CreateParams CreateParams
+            {
+                get
+                {
+                    CreateParams cp = base.CreateParams;
+                    cp.ExStyle |= 0x08000000; // WS_EX_NOACTIVATE
+                    return cp;
+                }
+            }
+
+            public ScrollingCaptureStopForm(Rectangle region)
+            {
+                this.FormBorderStyle = FormBorderStyle.None;
+                this.ShowInTaskbar = false;
+                this.TopMost = true;
+                this.BackColor = Color.FromArgb(25, 25, 25);
+                this.Size = new Size(180, 50);
+
+
+                Rectangle screen = Screen.FromPoint(region.Location).WorkingArea;
+                this.Location = new Point(screen.Left + (screen.Width - this.Width) / 2, screen.Bottom - this.Height - 60);
+
+                Button btnStop = new Button();
+                btnStop.Text = "FINISH SCROLLING";
+                btnStop.ForeColor = Color.White;
+                btnStop.FlatStyle = FlatStyle.Flat;
+                btnStop.FlatAppearance.BorderSize = 0;
+                btnStop.FlatAppearance.MouseOverBackColor = Color.FromArgb(50, 50, 50);
+                btnStop.FlatAppearance.MouseDownBackColor = Color.FromArgb(70, 70, 70);
+                btnStop.Dock = DockStyle.Fill;
+                btnStop.Font = new Font("Segoe UI Semibold", 10f);
+                btnStop.Cursor = Cursors.Hand;
+                btnStop.Click += (s, e) =>
+                {
+                    btnStop.Enabled = false;
+                    StopRequested?.Invoke();
+                };
+
+
+
+                this.Controls.Add(btnStop);
+
+                this.Load += (s, e) =>
+                {
+                    this.Region = Region.FromHrgn(NativeMethods.CreateRoundRectRgn(0, 0, Width, Height, 8, 8));
+                };
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                using (Pen pen = new Pen(Color.FromArgb(80, 80, 80), 1))
+                {
+                    e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+                }
+            }
+        }
     }
-}
+}

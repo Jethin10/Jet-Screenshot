@@ -117,6 +117,11 @@ namespace ShareX
             instance?.HideStackTemporary();
         }
 
+        public static void RestoreStack()
+        {
+            instance?.RestoreStackFromPeek();
+        }
+
         public static void ShowCapture(WorkerTask task)
         {
             if (task?.Info == null || string.IsNullOrEmpty(task.Info.FilePath) || !File.Exists(task.Info.FilePath))
@@ -166,34 +171,16 @@ namespace ShareX
             if (!Visible)
             {
                 Show();
-                BeginFormEntranceNudge();
+                // Removed BeginFormEntranceNudge(); to eliminate whole-form location animation lag
             }
 
             NativeMethods.SetWindowPos(Handle, (IntPtr)NativeConstants.HWND_TOPMOST, Left, Top, Width, Height, SetWindowPosFlags.SWP_NOACTIVATE);
         }
 
-        private async void BeginFormEntranceNudge()
+        private void BeginFormEntranceNudge()
         {
-            Point target = Location;
-            Point start = new Point(target.X, target.Y + 14);
-            Location = start;
-            const int steps = 10;
-            const int delayMs = 12;
-
-            for (int s = 1; s <= steps; s++)
-            {
-                float t = s / (float)steps;
-                float e = 1f - (float)Math.Pow(1 - t, 3);
-                int y = start.Y + (int)Math.Round((target.Y - start.Y) * e);
-                Location = new Point(target.X, y);
-                await Task.Delay(delayMs);
-                if (!IsHandleCreated || IsDisposed)
-                {
-                    return;
-                }
-            }
-
-            Location = target;
+            // Removed. Animating a TransparencyKey form's Location causes severe DWM lag in WinForms.
+            // The cards will still animate smoothly inside the form instead.
         }
 
         private void Card_EditRequested(CaptureOverlayCard card)
@@ -245,7 +232,17 @@ namespace ShareX
                     form.CopyImageRequested += TaskHelpers.MainFormCopyImage;
                     form.UploadImageRequested += output => TaskHelpers.MainFormUploadImage(output, taskSettings);
                     form.PrintImageRequested += TaskHelpers.MainFormPrintImage;
+
+                    bool wasVisible = Visible;
+                    if (wasVisible) Hide();
+
                     form.ShowDialog();
+
+                    if (wasVisible)
+                    {
+                        Show();
+                        NativeMethods.SetWindowPos(Handle, (IntPtr)NativeConstants.HWND_TOPMOST, Left, Top, Width, Height, SetWindowPosFlags.SWP_NOACTIVATE);
+                    }
 
                     switch (form.Result)
                     {
@@ -275,14 +272,13 @@ namespace ShareX
                     // Refresh the card thumbnail from disk
                     card.RefreshThumbnail();
                 }
-                catch
-                {
-                    editedBmp?.Dispose();
-                }
+                catch { }
             }
 
-            // Keep the card visible after editing
+            // Ensure the card stays open and interactive after returning from editor
             card.TouchInteract();
+            CaptureOverlayForm.RestoreStack();
+            instance?.UpdateCardStates();
         }
 
         private void Card_PinRequested(CaptureOverlayCard card)
@@ -488,6 +484,7 @@ namespace ShareX
             private readonly Button btnSaveCapsule;
             private readonly Button btnCornerPin;
             private readonly Button btnCornerClose;
+
             private readonly Button btnCornerEdit;
             private readonly Button btnCornerUpload;
             private readonly Timer dismissTimer;
@@ -514,12 +511,12 @@ namespace ShareX
                 Relayout
             }
 
-            private const int MotionIntervalMs = 14;
-            private const int AppearFrames = 13;
-            private const int DismissFrames = 11;
-            private const int RelayoutFrames = 14;
-            private const int AppearSlidePx = 36;
-            private const int DismissSlidePx = 40;
+            private const int MotionIntervalMs = 12;
+            private const int AppearFrames = 8;
+            private const int DismissFrames = 7;
+            private const int RelayoutFrames = 9;
+            private const int AppearSlidePx = 20;
+            private const int DismissSlidePx = 24;
 
             // NOTE: WS_EX_LAYERED was removed. It blocked mouse events
             // to all child controls (buttons, thumbnail) on Windows,
@@ -647,6 +644,8 @@ namespace ShareX
                     UploadManager.UploadFile(Task.Info.FilePath, Task.Info.TaskSettings);
                 };
 
+
+
                 btnCornerPin = CreateToolbarButton("\uE718"); // Pin icon
                 btnCornerPin.Click += (_, __) =>
                 {
@@ -661,6 +660,7 @@ namespace ShareX
                 WireChromeHover(btnCornerClose);
                 WireChromeHover(btnCornerEdit);
                 WireChromeHover(btnCornerUpload);
+
                 WireChromeHover(btnCopyCapsule);
                 WireChromeHover(btnSaveCapsule);
 
@@ -690,13 +690,14 @@ namespace ShareX
 
                 dismissTimer = new Timer
                 {
-                    Interval = 250,
+                    Interval = 50,
                     Enabled = true
                 };
                 dismissTimer.Tick += DismissTimer_Tick;
 
                 Controls.Add(thumbnailPanel);
                 Controls.Add(btnCornerClose);
+
                 Controls.Add(btnCornerEdit);
                 Controls.Add(btnCopyCapsule);
                 Controls.Add(btnSaveCapsule);
@@ -990,11 +991,6 @@ namespace ShareX
 
             public void TouchInteract()
             {
-                if (!IsPrimary)
-                {
-                    return;
-                }
-
                 lifetime.Touch(DateTime.UtcNow);
                 HoldRequested?.Invoke(this);
             }
@@ -1187,6 +1183,11 @@ namespace ShareX
                 RunDismissAnimation(() => DismissRequested?.Invoke(this));
             }
 
+            private async void TriggerScrollingCapture()
+            {
+                await TaskHelpers.OpenScrollingCapture(Task.Info?.TaskSettings);
+            }
+
             public void UpdatePresentation()
             {
                 // Thumbnail fills the entire card with minimal border
@@ -1209,6 +1210,7 @@ namespace ShareX
                 {
                     toolbar[i].Location = new Point(toolbarX + i * (btnSize + btnGap), toolbarY);
                 }
+
 
                 // Region clips panel to rounded rect
                 using (GraphicsPath path = CreateRoundedRectangle(new Rectangle(Point.Empty, Size), CardCornerRadius))
@@ -1275,10 +1277,8 @@ namespace ShareX
 
             private void SyncChromeVisibility(bool isFrontCard)
             {
-                bool isFront = IsPrimary && isFrontCard;
-
                 // All buttons only visible on hover (CleanShot X style)
-                bool showActions = isFront && isHovering;
+                bool showActions = isHovering;
                 btnCopyCapsule.Visible = showActions;
                 btnSaveCapsule.Visible = showActions;
                 btnCornerPin.Visible = showActions && supportsImageActions;
@@ -1292,6 +1292,20 @@ namespace ShareX
             private void DismissTimer_Tick(object sender, EventArgs e)
             {
                 bool pointerInside = ClientRectangle.Contains(PointToClient(Cursor.Position));
+
+                if (isHovering && !pointerInside)
+                {
+                    isHovering = false;
+                    lifetime.EndHold(DateTime.UtcNow);
+                    SyncChromeVisibility(true);
+                }
+                else if (!isHovering && pointerInside)
+                {
+                    isHovering = true;
+                    lifetime.BeginHold(DateTime.UtcNow);
+                    HoldRequested?.Invoke(this);
+                    SyncChromeVisibility(true);
+                }
 
                 if (!IsPrimary)
                 {
@@ -1403,30 +1417,12 @@ namespace ShareX
 
             private void Interactive_MouseEnter(object sender, EventArgs e)
             {
-                if (!IsPrimary)
-                {
-                    return;
-                }
-
-                isHovering = true;
-                lifetime.BeginHold(DateTime.UtcNow);
-                HoldRequested?.Invoke(this);
-                SyncChromeVisibility(true);
+                // Rely on DismissTimer_Tick for robust hover detection instead
             }
 
             private void Interactive_MouseLeave(object sender, EventArgs e)
             {
-                BeginInvoke((Action)(() =>
-                {
-                    bool inside = ClientRectangle.Contains(PointToClient(Cursor.Position));
-
-                    if (!inside)
-                    {
-                        isHovering = false;
-                        lifetime.EndHold(DateTime.UtcNow);
-                        SyncChromeVisibility(true);
-                    }
-                }));
+                // Rely on DismissTimer_Tick for robust hover detection instead
             }
 
             private void CaptureOverlayCard_Paint(object sender, PaintEventArgs e)
@@ -1453,7 +1449,7 @@ namespace ShareX
                 }
 
                 // On hover: dark gradient at bottom so toolbar icons are readable
-                if (isHovering && IsPrimary)
+                if (isHovering)
                 {
                     Rectangle gradientRect = new Rectangle(0, Height - 44, Width, 44);
                     using (LinearGradientBrush hoverGrad = new LinearGradientBrush(

@@ -1,4 +1,4 @@
-﻿namespace ShareX.ScreenCaptureLib
+namespace ShareX.ScreenCaptureLib
 {
     partial class ScrollingCaptureForm
     {
@@ -107,7 +107,7 @@
             this.Name = "ScrollingCaptureForm";
             this.WindowState = System.Windows.Forms.FormWindowState.Minimized;
             this.Activated += new System.EventHandler(this.ScrollingCaptureForm_Activated);
-            this.Load += new System.EventHandler(this.ScrollingCaptureForm_Load);
+
             this.pOutput.ResumeLayout(false);
             this.pOutput.PerformLayout();
             ((System.ComponentModel.ISupportInitialize)(this.pbOutput)).EndInit();
